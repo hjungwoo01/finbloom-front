@@ -5,28 +5,54 @@ import {
   onAuthStateChanged,
   GoogleAuthProvider,
 } from "firebase/auth";
-import { auth } from "../firebase-config";
+import { auth, db } from "../firebase-config";
+import { doc, setDoc } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
 export const AuthContextProvider = ({ children }) => {
   const [user, setUser] = useState(null);
 
-  const googleSignIn = () => {
+  const googleSignIn = async () => {
     const provider = new GoogleAuthProvider();
-    signInWithPopup(auth, provider);
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const signedInUser = result.user;
+
+      const userRef = doc(db, 'users', signedInUser.uid);
+      await setDoc(userRef, {
+        userInfo: {
+          name: signedInUser.displayName,
+          email: signedInUser.email,
+        },
+        loans: [],
+      }, { merge: true });
+
+      setUser(signedInUser);
+    } catch (error) {
+      console.error('Error signing in with Google:', error);
+    }
   };
 
-  const logOut = () => {
-    signOut(auth);
+  const logOut = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+      if (currentUser) {
+        setUser(currentUser);
+      } else {
+        setUser(null);
+      }
     });
-    return () => unsubscribe();
-  }, [user]);
+    return unsubscribe;
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, googleSignIn, logOut }}>
